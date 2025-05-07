@@ -57,7 +57,7 @@ This platform empowers users to deploy applications to a Kubernetes cluster auto
 
 ---
 
-## ✨ Features You Will Use & Learn
+## ✨ Features We Will Use 
 
 - Git & GitHub for version control
 - Docker for containerization
