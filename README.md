@@ -249,27 +249,235 @@ jobs:
 
 ---
 
-## 🛡️ Setup ArgoCD in Kubernetes Cluster
+## 🛡️ Setup ArgoCD in Minikube Cluster (Option 1)
 
-1. Install ArgoCD
+Note: You can setup Argo CD in any cluster, instructions are same.
+
+- First install Minikube:
+  Installation guide for installing Minikube.
+  [Minikube.sigs.k8s.io](https://minikube.sigs.k8s.io/docs/start/?arch=%2Fwindows%2Fx86-64%2Fstable%2F.exe+download)
+
+---
+
+- Install ArgoCD
 
 ```bash
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
-2. Expose ArgoCD UI
+- Expose ArgoCD UI
 
 ```bash
 kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort"}}'
 kubectl get svc -n argocd
 ```
 
-3. Access ArgoCD UI (for Minikube users)
+- Verify if ArgoCD is running:
+
+```
+kubectl get all -n argocd
+```
+
+- Grab ArgoCD secret for accessing UI
+
+```
+kubectl get secrets -n argocd argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+```
+
+- Access ArgoCD UI (for Minikube users)
 
 ```bash
 minikube service argocd-server -n argocd
 ```
+---
+
+## 🛡️ Setup ArgoCD in Azure AKS (Option 2)
+
+### Step 1: Prerequisites
+
+Ensure the following prerequisites are met before getting started:
+
+- **Azure Account**  
+  Ensure you have an active Azure account. [Sign up for free](https://azure.microsoft.com/free) if needed.
+
+- **Install Required Tools**
+  - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
+  - [kubectl](https://kubernetes.io/docs/tasks/tools/)
+  - [Docker](https://docs.docker.com/get-docker/)
+
+---
+
+### Step 2: Create an Azure Kubernetes Service (AKS) Cluster
+
+1. **Login to Azure**
+   ```bash
+   az login
+   ```
+
+2. **Create a Resource Group**
+   ```bash
+   az group create --name myResourceGroup --location eastus
+   ```
+
+3. **Create an AKS Cluster**
+   ```bash
+   az aks create --resource-group myResourceGroup --name myAKSCluster --node-count 1 --enable-addons monitoring --generate-ssh-keys
+   ```
+
+4. **Connect to the AKS Cluster**
+   ```bash
+   az aks get-credentials --resource-group myResourceGroup --name myAKSCluster
+   ```
+
+---
+
+### Step 3: Containerize the <app-name> Application
+
+1. **Build the Docker Image**  
+   Replace `<DOCKER_USERNAME>` with your Docker Hub username:
+   ```bash
+   docker build -t <DOCKER_USERNAME>/<app-name>:latest .
+   ```
+
+2. **Push the Image to Docker Hub**
+   ```bash
+   docker push <DOCKER_USERNAME>/<app-name>:latest
+   ```
+
+---
+
+### Step 4: Deploy the Application to AKS
+
+#### Kubernetes Manifest Files
+
+- **deploy.yaml**
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: <app-name>
+    labels:
+      app: <app-name>
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: <app-name>
+    template:
+      metadata:
+        labels:
+          app: <app-name>
+      spec:
+        containers:
+        - name: <app-name>
+          image: <DOCKER_USERNAME>/<app-name>:latest
+          ports:
+          - containerPort: 5000
+  ```
+
+- **svc.yaml**
+  ```yaml
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: flask-service
+  spec:
+    type: LoadBalancer
+    selector:
+      app: <app-name>
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  ```
+
+---
+
+#### Deploy to AKS
+
+1. **Apply the Deployment**
+   ```bash
+   kubectl apply -f deploy.yaml
+   ```
+
+2. **Expose the Application**
+   ```bash
+   kubectl apply -f svc.yaml
+   ```
+
+3. **Get the External IP**
+   ```bash
+   kubectl get svc
+   ```
+
+4. **Access the Application**  
+   Visit `http://<EXTERNAL-IP>` in your browser.
+
+---
+
+### Step 5: Set Up ArgoCD for GitOps
+
+1. **Install ArgoCD**
+   ```bash
+   kubectl create namespace argocd
+   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+   ```
+
+2. **Expose ArgoCD Server**
+   ```bash
+   kubectl port-forward svc/argocd-server -n argocd 8080:443
+   ```
+
+3. **Get ArgoCD Admin Password**
+   ```bash
+   kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d
+   ```
+
+4. **Access the ArgoCD UI**  
+   Visit `http://localhost:8080`  
+   - **Username:** `admin`
+   - **Password:** (password from above command)
+
+5. **Configure the Application in ArgoCD**
+   - **Application Name:** `demo-app`
+   - **Repository URL:** `https://github.com/<username>/Flask-App-GitHub-Actions-ArgoCD.git`
+   - **Path:** (directory containing Kubernetes manifests, e.g., `deploy`)
+   - **Cluster URL:**
+     - For AKS: `https://<your-cluster-name>.hcp.<region>.azmk8s.io:443`
+     - Default: `https://kubernetes.default.svc`
+   - **Namespace:** `default` (or your custom namespace)
+
+---
+
+### Step 6: Verify the Deployment
+
+1. **Check Pods**
+   ```bash
+   kubectl get pods
+   ```
+
+2. **Access the Application**  
+   Visit the `EXTERNAL-IP` of your service in a browser to access your <app-name> application.
+
+---
+
+### Step 7: Optimize Costs (Optional)
+
+- **Scale Down Node Pools**
+   ```bash
+   az aks nodepool scale --resource-group myResourceGroup --cluster-name myAKSCluster --name nodepool1 --node-count 1
+   ```
+
+- **Delete Unused Public IPs**
+   ```bash
+   az network public-ip delete --ids $(az network public-ip list --query "[?ipAddress!=null].id" -o tsv)
+   ```
+
+- **Delete Persistent Volumes (if not needed)**
+   ```bash
+   kubectl delete pvc --all
+   ```
 
 ---
 
