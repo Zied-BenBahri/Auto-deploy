@@ -13,14 +13,13 @@ class GithubService:
             "Accept": "application/vnd.github+json"
         })
 
-    def create_repo_from_template(self, user_repo_url: str, username: str) -> str:
+    def create_repo_from_template(self, app_name: str, username: str) -> str:
         """
         Create a new repo from the predefined template repo.
         The new repo name is based on the user's repo name and username.
         Returns the name of the newly created repo.
         """
-        user_repo_name = user_repo_url.rstrip("/").split("/")[-1].replace(".git", "")
-        new_repo_name = f"{username.lower()}-{user_repo_name}-deployed"
+        new_repo_name = f"{username.lower()}-{app_name}-deployed"
 
         url = f"{GITHUB_API}/repos/{GITHUB_USERNAME}/{TEMPLATE_REPO}/generate"
         data = {
